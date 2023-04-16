@@ -1,4 +1,4 @@
-﻿// Generating Julia Set images using CUDA
+﻿// Generating an image of the MandelBrot Set using CUDA
 // Charlin Duff
 // last modified: 4/5/23
 
@@ -63,21 +63,21 @@ __device__ struct dColor {
 
 //MandelBrot & map GPU function definition
 
-	// map maps value, which is a number between in_min and in_max, to a corresponding number between
-	// out_min and out_max
+    // map maps value, which is a number between in_min and in_max, to a corresponding number between
+    // out_min and out_max
 
 __device__ double map(double value, double in_min, double in_max, double out_min, double out_max) {
 
 	return (((value - in_min) * (out_max - out_min)) / (in_max - in_min)) + out_min;
 }
 
-// JSet takes our array index and uses it to determine what pixel we are at,
+// MBSet takes our array index and uses it to determine what pixel we are at,
 // what complex number that pixel corresponds to, whether that pixel is in the
-// specified Julia set, and colors that pixel accordingly, and populates that index
+// Mandelbrot set, and colors that pixel accordingly, and populates that index
 // value of our pixel array with the appropriate color values for that 
 // particular pixel/complex number
 
-__device__ dColor JSet(int ind) {
+__device__ dColor MBSet(int ind) {
 
 	//*** INITIALIZING VARIABLES ***//
 
@@ -92,12 +92,9 @@ __device__ dColor JSet(int ind) {
 	// numbers to map to pixels coordinates on our image
 
 	// for a "zoomed" effect, you can set min & max values closer together around a point of interest
-	// normally been stting it to min = -2, max = 2, for z^4 0.6+0.55i do -1.05 to 1.05
-	double xminimum = -1.5;
-	double xmaximum = 1.5;
-
-	double yminimum = -1.5;
-	double ymaximum = 1.5;
+	// normally been stting it to min = -1.9, max = 1.3
+	double minimum = -1.85;
+	double maximum = 1.15;
 
 	// (x,y) tells us what pixel we are currently at in our image.
 
@@ -107,9 +104,9 @@ __device__ dColor JSet(int ind) {
 	int x = ind % Width;
 	int y = ind / Height;
 
-	// A Julia set is an iterative fractal given by z = z^2+c where z is initalized at 0+0i and
-	// c is a set point (a+bi) on the complex plane best chosen within the square that has
-	// verticies at 2+2i, 2-2i, -2-2i, and -2+2i. A Julia set is entirely contained within this 
+	// The Mandelbrot set is an iterative fractal given by z = z^2+c where z is initalized at 0+0i and
+	// c is some point (a+bi) on the complex plane best chosen within the square that has
+	// verticies at 2+2i, 2-2i, -2-2i, and -2+2i. The Mandelbrot set is entirely contained within this 
 	// square, so a choice of c outside these bounds would be frivilous to test. 
 
 	// initalizing c:
@@ -121,13 +118,12 @@ __device__ dColor JSet(int ind) {
 	// function takes the (x,y) coordinate of the pixel in our image and maps it
 	// to the corresponding (x+yi) coordinate within our min/max bounds on the complex
 	// plane
-	double a = map(x, 0, Width, xminimum, xmaximum);
-	double b = map(y, 0, Height, yminimum, ymaximum);
+	double a = map(x, 0, Width, minimum, maximum);
+	double b = map(y, 0, Height, minimum, maximum);
 
-	//ac, bc = c real value, c imaginary value
-	// c of interest: -0.79+0.15i, -0.54+0.54i, (for z^4): 0.6+0.55i
-	double ac = -0.32193;
-	double bc = 0.62762;
+	//ac, bc = c real intital value, c imaginary initial value
+	double ac = a;
+	double bc = b;
 
 	// n is a counter to keep track of how many times z=z^2+c iterates
 	// before diverging (if it diverges)
@@ -142,11 +138,8 @@ __device__ dColor JSet(int ind) {
 		// az represents the real part of z = z^2, bz represents the imaginary part
 		// of z = z^2. c is added after since it is a static number
 
-		//for z^4: az = (a*a*a*a) - (6*a*a*b*b) + (b*b*b*b)
-		//         bz = (4*a*a*a*b) - (4*a*b*b*b)
-
-		double az = a*a - b*b;
-		double bz = 2*a*b;
+		double az = a * a - b * b;
+		double bz = 2 * a * b;
 
 		// setting next values of a & b for the next iteration, here we are also adding 
 		// the real and imaginary parts of c to the real and imaginary parts of the current z
@@ -176,14 +169,14 @@ __device__ dColor JSet(int ind) {
 
 	// bright is the number of iterations z completed mapped to a value between 0
 	// and 255 for RGB coloring purposed
-	int bright = map(n, 0, MAX_ITERATIONS, 0, 255);
+	double bright = map(n, 0, MAX_ITERATIONS, 0, 255);
 
-	// Coloring pixels that are in set white
-	if (n == MAX_ITERATIONS) {
+	// Coloring pixels that are in mandelbrot set black
+	if (n == MAX_ITERATIONS){
 
-		bright = 255;
+		bright = 0;
 	}
-
+	
 	//coloring rogue pixels black to make a prettier picture
 	if (bright < 20) {
 
@@ -198,10 +191,12 @@ __device__ dColor JSet(int ind) {
 	// Red is just set to bright
 	// Green is the sq root of bright mapped to a corresponding value between 0,255
 	// Blue is bright squared being mapped to a corresponding value between 0,255
-
+	
 	// dColor(R,G,B):
 
-	p = dColor(bright , map(sqrt((float)bright), 0, sqrt((float)255), 0, 255), map(bright * bright, 0, 255 * 255, 0, 255));
+	p = dColor(map(sqrt((float)bright), 0, sqrt((float)255), 0, 255) ,bright, map(sqrt((float)bright), 0, sqrt((float)255), 0, 255));
+		
+		//dColor(bright, map(sqrt((float)bright), 0, sqrt((float)255), 0, 255), map(bright * bright, 0, 255 * 255, 0, 255));
 
 	// The inital, uncolored pixel in our 1D array will be replaced with p
 	return p;
@@ -209,12 +204,12 @@ __device__ dColor JSet(int ind) {
 }
 
 // Popcorn kernel 
-__global__ void Popcorn(dColor* d_image) {
+__global__ void Popcorn( dColor* d_image) {
 
 	int index = threadIdx.x + blockIdx.x * blockDim.x;
 
-	d_image[index] = JSet(index);
-
+	d_image[index] = MBSet(index);
+	
 }
 
 //************STRUCT DEFINITIONS FOR BMP IMAGE HEADERS****************//
@@ -274,11 +269,11 @@ int main(void) {
 	// host copy of pixel array
 	Color* image;
 
-	// device copy of pixel array
+    // device copy of pixel array
 	dColor* d_image;
 
 	// calculating necessary size for arrays based on image size and pixel size
-	int size = Width * Height * 3 * sizeof(float);
+	int size = Width * Height * 3 *sizeof(float);
 
 	// Allocate space for device copy of array
 	cudaMalloc((void**)&d_image, size);
@@ -290,19 +285,19 @@ int main(void) {
 	cudaMemcpy(d_image, image, size, cudaMemcpyHostToDevice);
 
 	// Pops our kernel (Launches kernel on GPU)
-	Popcorn << < N, M >> > (d_image);            // <<<numBlocks,numThreadsperblock>>> defines kernel size, 
-											   // in this case, uses M threads from N different blocks
-											   // d_image is our variable we want to pass to the device
+	 Popcorn <<< N, M >>> (d_image);            // <<<numBlocks,numThreadsperblock>>> defines kernel size, 
+												// in this case, uses M threads from N different blocks
+												// d_image is our variable we want to pass to the device
 
-   // Copy GPU array back to host after kernel runs
+	// Copy GPU array back to host after kernel runs
 	cudaMemcpy(image, d_image, size, cudaMemcpyDeviceToHost);
-
+	
 	// Save pixel array to image file on computer
-	saveImage("julia3.bmp", Width, Height, image);
+	saveImage("MBS1.bmp", Width, Height, image);
 
 	// VIOLENTLY DESTROY THE ARRAYS
 	free(image);
-	;
+;
 	cudaFree(d_image);
 
 	return 0;

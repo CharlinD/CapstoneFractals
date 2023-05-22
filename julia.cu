@@ -1,6 +1,6 @@
 ﻿// Generating Julia Set images using CUDA
 // Charlin Duff
-// last modified: 4/5/23
+// last modified: 5/22/23
 
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
@@ -10,13 +10,12 @@
 #include <cmath>
 #include <fstream>
 #include <string>
-#include <string>
 #include <stdio.h>
 #include <stdlib.h>
 
 using namespace std;
 
-// Defining host & device copies of color struct
+// ~~~~~~ Defining host & device copies of color struct ~~~~~~
 // There is a way to make them share memory but idk it so they
 // each get their very own struct
 
@@ -61,9 +60,9 @@ __device__ struct dColor {
 	}
 };
 
-//MandelBrot & map GPU function definition
+//~~~~~~~ fractalImage & map GPU function definition ~~~~~~~~~
 
-	// map maps value, which is a number between in_min and in_max, to a corresponding number between
+	// map maps value, which is a number between in_min and in_max, to the corresponding number between
 	// out_min and out_max
 
 __device__ double map(double value, double in_min, double in_max, double out_min, double out_max) {
@@ -71,13 +70,22 @@ __device__ double map(double value, double in_min, double in_max, double out_min
 	return (((value - in_min) * (out_max - out_min)) / (in_max - in_min)) + out_min;
 }
 
-// JSet takes our array index and uses it to determine what pixel we are at,
+// fractalImage takes our array index and uses it to determine what pixel we are at,
 // what complex number that pixel corresponds to, whether that pixel is in the
-// specified Julia set, and colors that pixel accordingly, and populates that index
-// value of our pixel array with the appropriate color values for that 
-// particular pixel/complex number
+// specified fractal set, and populates that index value of our pixel array with the 
+// appropriate color values for that particular pixel/complex number
 
-__device__ dColor JSet(int ind) {
+__device__ dColor fractalImage(int ind) {
+
+	// A Julia set is an IFS fractal given by z = z^2+c. Where z is initalized at the current point 
+	// being tested (az+bzi), and c is a set point (ac+bci) on the complex plane best chosen within 
+	// circle radius 2 from the origin. A Julia set is entirely contained within this circle so a 
+	// choice of c outside these bounds would be frivilous to test. A good window choice will be
+	// -2<=x,y<=2
+	
+	// A Mandelbrot set is an IFS fractal given by z = z^2+c, where z is initialized at 0+0i and
+	// c is set to the current point being tested. Like a Julia set, the Mandelbrot Set is entirely 
+	// contained within circle radius 2 from the origin so a good window choice will be -2<=x,y<=2.
 
 	//*** INITIALIZING VARIABLES ***//
 
@@ -88,29 +96,28 @@ __device__ dColor JSet(int ind) {
 	// setting the number of maximum iterations we will run on a single point while testing for divergence:
 	int MAX_ITERATIONS = 200;
 
-	// min & max set the complex plane boundaries we want to use when chosing complex
+	// ~~~~ Window ~~~~~~
+	
+	// x,y min & x,y max set the complex plane boundaries we want to use when chosing complex
 	// numbers to map to pixels coordinates on our image
 
 	// for a "zoomed" effect, you can set min & max values closer together around a point of interest
-	// normally been stting it to min = -2, max = 2, for z^4 0.6+0.55i do -1.05 to 1.05
+	// normally been stting it to min = -1.5, max = 1.5 for starting windows
 	double xminimum = -1.5;
 	double xmaximum = 1.5;
 
 	double yminimum = -1.5;
 	double ymaximum = 1.5;
-
-	// (x,y) tells us what pixel we are currently at in our image.
+	
+	// ~~~~~~~~~~~~~~~~~~~
 
 	// ind is the current index we are at in our 1D array of pixels, so we must break it
 	// up into its 2D (x,y) parts so we can appropriately perform our "2D" "are you in the 
-	// Mandelbrot set" calculation. x denotes a row coordinate and y denotes a column coordinate
+	// Mandelbrot set" calculation. x denotes a row and y denotes a column.
+	
+	// (x,y) tells us what pixel we are currently at in our image.
 	int x = ind % Width;
 	int y = ind / Height;
-
-	// A Julia set is an iterative fractal given by z = z^2+c where z is initalized at 0+0i and
-	// c is a set point (a+bi) on the complex plane best chosen within the square that has
-	// verticies at 2+2i, 2-2i, -2-2i, and -2+2i. A Julia set is entirely contained within this 
-	// square, so a choice of c outside these bounds would be frivilous to test. 
 
 	// initalizing c:
 
@@ -213,7 +220,7 @@ __global__ void Popcorn(dColor* d_image) {
 
 	int index = threadIdx.x + blockIdx.x * blockDim.x;
 
-	d_image[index] = JSet(index);
+	d_image[index] = fractalImage(index);
 
 }
 
@@ -248,7 +255,8 @@ struct BMPInfoHeader {
 
 //************ END OF STRUCT DEFINITIONS FOR BMP IMAGE HEADERS ****************//
 
-//function header for SaveImage
+// function header for SaveImage
+// see under main for function defn
 void saveImage(string filePath, int width, int height, Color* image);
 
 // Define N,M our kernel size, M threads on N blocks
@@ -256,8 +264,8 @@ void saveImage(string filePath, int width, int height, Color* image);
 
 // to decide how many bolcks/threads:
 // N = (Width * Height) / 1000 (blocks)
-// M = 1000 (threads) (i use 1000t for simplicity, these #s must be ints and
-//                       dividing by 1024 doesnt always result in an int.)
+// M = 1000 (threads) (i use 1000 for simplicity, these #s must be ints and
+//                     dividing by 1024 doesnt always result in a whole num.)
 
 // for 800x800 img, N = 640, M = 1000
 // for 1000x1000 img, N,M = 1000
@@ -270,12 +278,18 @@ int main(void) {
 	//Image Parameters:
 	int Width = 1000;
 	int Height = 1000;
+	char type = 'j';    // lets program know which fractal you are generating
+	                    // set to 'j' for Julia or 'm' for Mandelbrot
 
 	// host copy of pixel array
 	Color* image;
 
 	// device copy of pixel array
 	dColor* d_image;
+	
+	// device copy of height & width
+	
+	// device copy of type
 
 	// calculating necessary size for arrays based on image size and pixel size
 	int size = Width * Height * 3 * sizeof(float);
@@ -290,19 +304,18 @@ int main(void) {
 	cudaMemcpy(d_image, image, size, cudaMemcpyHostToDevice);
 
 	// Pops our kernel (Launches kernel on GPU)
-	Popcorn << < N, M >> > (d_image);            // <<<numBlocks,numThreadsperblock>>> defines kernel size, 
-											   // in this case, uses M threads from N different blocks
-											   // d_image is our variable we want to pass to the device
+	Popcorn <<< N, M >>> (d_image);            // <<<numBlocks,numThreadsperblock>>> defines kernel size, 
+						     // in this case, uses M threads from N different blocks
+						     // d_image is our variable we want to pass to the device
 
-   // Copy GPU array back to host after kernel runs
+        // Copy GPU array back to host after kernel runs
 	cudaMemcpy(image, d_image, size, cudaMemcpyDeviceToHost);
 
 	// Save pixel array to image file on computer
-	saveImage("julia3.bmp", Width, Height, image);
+	saveImage("ExampleFractal.bmp", Width, Height, image);
 
 	// VIOLENTLY DESTROY THE ARRAYS
 	free(image);
-	;
 	cudaFree(d_image);
 
 	return 0;
@@ -338,14 +351,14 @@ void saveImage(string filePath, int width, int height, Color* image) {
 	infoHeader.bisize = sizeof(BMPInfoHeader); //determines which info header we are using
 	infoHeader.biSizeImage = header.bfSize; //rendundant
 	infoHeader.biWidth = width; //width of the image
-	infoHeader.biXPelsPerMeter = 2000; //not relevant for us, set to 2000 for funsies
-	infoHeader.biYPelsPerMeter = 2000; //same as above
+	infoHeader.biXPelsPerMeter = 0; //not relevant for us
+	infoHeader.biYPelsPerMeter = 0; //same as above
 
 	fout.write((char*)&header, sizeof(BMPHeader));         //writing our BMP headers to the file
 	fout.write((char*)&infoHeader, sizeof(BMPInfoHeader));
 
 	for (int i = 0; i < width * height; i++) {
-		unsigned char r, g, b;    //need to convert r,g,b to char vals
+		unsigned char r, g, b;    //need to convert r,g,b to char vals for image writing
 		Color c = image[i];
 		r = (int)floor(c.r);
 		g = (int)floor(c.g);

@@ -1,3 +1,5 @@
+WORK IN PROGRESS, A BIT UNORGANIZED RIGHT NOW
+
 # CapstoneFractals
 CUDA/C++ code for generating Julia Sets and the Mandelbrot Set
 
